@@ -2190,14 +2190,28 @@ function keywordMatch(detail) {
 // confident ones). Used as a suggestion when we have no merchant history; the
 // ambiguous ones (cafes, retail, insurance…) are left for manual assignment.
 function akahuCategoryGuess(tx) {
-  const cat = (tx.categoryHint || '').toLowerCase();
-  if (!cat) return null;
+  // Match specific Akahu labels against BOTH the category hint and the broader group
+  // hint, so a useful token still counts when the bank only fills the group field.
+  // Needles are specific ("supermarket", "fuel station"), so a broad group name can't
+  // cause a false positive. Every mapping is gated on the category existing in the
+  // user's budget, and the result is only ever a flagged suggestion (never auto-locked).
+  const cat = ((tx.categoryHint || '') + ' ' + (tx.groupHint || '')).toLowerCase();
+  if (!cat.trim()) return null;
   const map = [
-    ['supermarket', 'Groceries'], ['grocery', 'Groceries'], ['specialty food', 'Groceries'],
-    ['convenience store', 'Groceries'], ['bakeries', 'Groceries'], ['meal kit', 'Groceries'],
-    ['fuel station', 'Petrol'], ['electric vehicle charging', 'Petrol'],
-    ['automotive parts', 'Car upkeep'], ['tyre', 'Car upkeep'],
-    ['electricity', 'Power'], ['internet service', 'Internet']
+    ['supermarket', 'Groceries'], ['grocery', 'Groceries'], ['groceries', 'Groceries'],
+    ['specialty food', 'Groceries'], ['convenience store', 'Groceries'], ['bakeries', 'Groceries'],
+    ['bakery', 'Groceries'], ['butcher', 'Groceries'], ['greengrocer', 'Groceries'], ['meal kit', 'Groceries'],
+    ['fuel station', 'Petrol'], ['petrol', 'Petrol'], ['service station', 'Petrol'],
+    ['electric vehicle charging', 'Petrol'], ['ev charging', 'Petrol'],
+    ['automotive parts', 'Car upkeep'], ['auto parts', 'Car upkeep'], ['tyre', 'Car upkeep'],
+    ['tire', 'Car upkeep'], ['car repair', 'Car upkeep'], ['mechanic', 'Car upkeep'],
+    ['automotive service', 'Car upkeep'], ['car wash', 'Car upkeep'],
+    ['electricity', 'Power'], ['power company', 'Power'], ['energy retailer', 'Power'],
+    ['internet service', 'Internet'], ['broadband', 'Internet'], ['internet provider', 'Internet'],
+    ['mobile phone', 'Phone'], ['mobile network', 'Phone'],
+    ['insurance', 'Insurance'],
+    ['streaming', 'Subscriptions'], ['subscription', 'Subscriptions'],
+    ['local council', 'Rates'], ['city council', 'Rates'], ['district council', 'Rates']
   ];
   for (const [needle, c] of map) {
     if (cat.includes(needle) && store.budget[c]) return c;
