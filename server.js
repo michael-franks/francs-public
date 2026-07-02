@@ -15,7 +15,7 @@ let nodemailer = null; try { nodemailer = require('nodemailer'); } catch (e) { c
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';   // localhost-only by default; set HOST=0.0.0.0 to expose (behind auth — see the startup warning)
 
 // ─── Akahu config ──────────────────────────────────────────────
 const AKAHU_BASE = 'https://api.akahu.io/v1';
@@ -50,7 +50,7 @@ const CRYPTO_HOLDINGS = [
 ];
 async function fetchCryptoData() {
   const ids = CRYPTO_HOLDINGS.map(c => c.id).join(',');
-  const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=nzd');
+  const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=nzd', { signal: AbortSignal.timeout(7000) });
   if (!r.ok) throw new Error('coingecko ' + r.status);
   const prices = await r.json();
   const holdings = CRYPTO_HOLDINGS.map(c => {
@@ -97,8 +97,19 @@ function saveJSON(filepath, data) {
   const tmp = filepath + '.' + process.pid + '.tmp';
   const fd = fs.openSync(tmp, 'w');
   try { fs.writeFileSync(fd, JSON.stringify(data, null, 2)); fs.fsyncSync(fd); }
-  finally { fs.closeSync(fd); }
+  catch (e) { try { fs.closeSync(fd); } catch (_) {} try { fs.unlinkSync(tmp); } catch (_) {} throw e; }   // don't leave a partial .tmp behind
+  fs.closeSync(fd);
   fs.renameSync(tmp, filepath);
+}
+
+// Load → mutate → save fetch-meta.json in ONE synchronous tick, so overlapping async writers
+// (fetch / balance-refresh / card-reminder) that each hold META across multi-second awaits can't
+// clobber one another's fields. Each caller mutates only the keys it owns.
+function withMeta(mutate) {
+  const m = loadJSON(META_FILE, {});
+  mutate(m);
+  saveJSON(META_FILE, m);
+  return m;
 }
 
 // ─── Akahu API helpers ─────────────────────────────────────────
@@ -306,9 +317,11 @@ async function runFetch() {
   // lastTxDate tracks POSTED only — pending dates run ahead and are ephemeral, so
   // letting them advance the cursor would skip late-posting transactions.
   const postedDates = [...existingPosted, ...newPosted].map(t => t.date).filter(Boolean).sort();
-  meta.lastFetch = new Date().toISOString();
-  meta.lastTxDate = postedDates.length ? postedDates[postedDates.length - 1] : meta.lastTxDate;
-  saveJSON(META_FILE, meta);
+  const newLastTx = postedDates.length ? postedDates[postedDates.length - 1] : null;
+  withMeta(m => {   // re-load + merge so an overlapping refresh/reminder can't revert our fields
+    m.lastFetch = new Date().toISOString();
+    if (newLastTx) m.lastTxDate = newLastTx;
+  });
 
   try { await checkCardReminder(accounts); } catch (e) { console.error('[reminder] failed (non-fatal):', e.message); }
 
@@ -351,7 +364,7 @@ async function checkCardReminder(accounts, force) {
   const text = `Time to settle your credit card.\n\nDue: ${dueLabel} (in ${days} day${days === 1 ? '' : 's'}).\nBalance to settle: $${cardOwed.toFixed(2)}.\n\nReview & settle: ${appUrl}\n`;
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;color:#0f172a"><p>Time to settle <b>your credit card</b>.</p><p><b>Due:</b> ${dueLabel} (in ${days} day${days === 1 ? '' : 's'})<br><b>Balance to settle:</b> $${cardOwed.toFixed(2)}</p><p><a href="${appUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Review &amp; settle →</a></p></div>`;
   const to = await sendMail(subject, text, html);
-  if (!force) { meta.lastCardReminder = dueISO; saveJSON(META_FILE, meta); }   // a forced test doesn't consume the real cycle reminder
+  if (!force) withMeta(m => { m.lastCardReminder = dueISO; });   // re-load + merge; a forced test doesn't consume the real cycle reminder
   console.log('[reminder] Card settlement email →', to, '· due', dueISO, '· $' + cardOwed.toFixed(2));
   return { sent: true, to, days, dueISO, cardOwed };
 }
@@ -454,14 +467,13 @@ app.post('/api/fetch', async (req, res) => {
 app.post('/api/refresh-balances', async (req, res) => {
   try {
     console.log('[api] Balance refresh triggered');
-    const meta = loadJSON(META_FILE, { lastFetch: null, lastTxDate: null });
     const accounts = await fetchAccounts();
     let cryptoTotal = 0;
     try { cryptoTotal = (await fetchCryptoData()).total; } catch (e) { console.error('crypto fetch failed (non-fatal):', e.message); }
     logBalances(accounts, cryptoTotal ? { crypto: cryptoTotal } : null);
-    meta.lastBalances = new Date().toISOString();
-    saveJSON(META_FILE, meta);
-    res.json({ ok: true, accountCount: accounts.length, at: meta.lastBalances });
+    const at = new Date().toISOString();
+    withMeta(m => { m.lastBalances = at; });   // re-load + merge so a concurrent fetch isn't reverted
+    res.json({ ok: true, accountCount: accounts.length, at });
   } catch (e) {
     console.error('[api] Balance refresh error:', e);
     res.status(500).json({ ok: false, error: e.message });
@@ -579,6 +591,12 @@ app.put('/api/state', (req, res) => {
   if (typeof body.state === 'undefined') {
     return res.status(400).json({ ok: false, error: 'Missing state in body' });
   }
+  // Structural validation: reject null / a string / a bare {} / anything missing the core arrays,
+  // which would otherwise be written verbatim and propagated to every device. force:true bypasses.
+  const s = body.state;
+  if (!body.force && (typeof s !== 'object' || s === null || Array.isArray(s) || !Array.isArray(s.periods) || !Array.isArray(s.categories))) {
+    return res.status(400).json({ ok: false, error: 'Invalid state shape (need an object with periods[] and categories[]); pass force:true to override' });
+  }
   let current;
   try { current = loadJSONStrict(STATE_FILE); }
   catch (e) { console.error('Refusing PUT over unreadable state.json:', e.message); return res.status(500).json({ ok: false, error: 'existing state unreadable — not overwriting' }); }
@@ -594,6 +612,14 @@ app.put('/api/state', (req, res) => {
       state: current ? current.state : null
     });
   }
+  // Shrink tripwire: refuse a write that drops most of the ledger (a wiped or half-migrated client)
+  // unless forced. The client's existing 409 handler re-adopts the returned (larger) state.
+  const curPeriods = (current && current.state && Array.isArray(current.state.periods)) ? current.state.periods.length : 0;
+  const newPeriods = Array.isArray(s.periods) ? s.periods.length : 0;
+  if (!body.force && curPeriods >= 10 && newPeriods < curPeriods * 0.5) {
+    return res.status(409).json({ ok: false, error: 'Refusing to shrink ledger from ' + curPeriods + ' to ' + newPeriods + ' periods; pass force:true if intended', currentVersion, state: current ? current.state : null });
+  }
+  snapshotState();   // copy the current file aside BEFORE overwriting (the recovery layer)
   const wrap = {
     state: body.state,
     version: currentVersion + 1,
@@ -610,4 +636,13 @@ app.listen(PORT, HOST, () => {
   console.log(`[server] Budget Tool Server running at http://${HOST}:${PORT}`);
   console.log(`[server] Data dir: ${DATA_DIR}`);
   console.log(`[server] Endpoints: /api/status, POST /api/fetch, /api/transactions, /api/accounts, /health`);
+  // Loud warning if reachable beyond localhost without any auth: the API serves your finances
+  // and accepts writes (PUT /api/state) with no login unless REQUIRE_CF_ACCESS is enabled.
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost' && HOST !== '::1' && !REQUIRE_CF_ACCESS) {
+    console.warn('');
+    console.warn(`[server] WARNING: bound to ${HOST} — reachable beyond localhost with NO authentication.`);
+    console.warn('[server] WARNING: anyone who can reach this port can read your finances and OVERWRITE your data.');
+    console.warn('[server] WARNING: only expose it behind Cloudflare Access (REQUIRE_CF_ACCESS=1 + ALLOWED_EMAIL) or a VPN.');
+    console.warn('');
+  }
 });
