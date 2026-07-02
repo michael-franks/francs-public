@@ -3485,7 +3485,14 @@ function renderMergedSummary(periods, from, to) {
 
 // ── Shared transaction row renderer ──
 function escapeHtml(s) {
-  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Escape a value that will sit inside a SINGLE-QUOTED JS string that is itself inside a
+// DOUBLE-QUOTED HTML attribute — e.g. onclick="fn('<here>')". escapeHtml is NOT safe there because
+// the HTML parser decodes &#39; back to ' before the JS runs. Backslash FIRST (so a leading
+// backslash can't escape our own escaping), then the JS-string quote, then entitise the attr quote.
+function jsStr(s) {
+  return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 
 function renderTxRow(tx, opts) {
@@ -4211,7 +4218,7 @@ function renderSettings() {
   // Accounts
   document.getElementById('accountsList').innerHTML = store.accounts.map((a, i) => `
     <div class="setting-row">
-      <input value="${a.name}" onchange="store.accounts[${i}].name=this.value;saveStore(store);" style="flex:1">
+      <input value="${escapeHtml(a.name)}" onchange="store.accounts[${i}].name=this.value;saveStore(store);" style="flex:1">
       <select onchange="store.accounts[${i}].type=this.value;saveStore(store);">
         <option value="positive" ${a.type==='positive'?'selected':''}>Add to total</option>
         <option value="negative" ${a.type==='negative'?'selected':''}>Subtract (CC/debt)</option>
@@ -4405,10 +4412,10 @@ function renderSettings() {
     const btype = (typeof entry === 'object' && entry.type) || 'variable';
     const wk = weeklyAmount(entry);
     const ext = extrapolate(wk);
-    const esc = cat.replace(/'/g, "\\'");
+    const esc = jsStr(cat);
     const rowClass = isSub ? 'budget-sub-row' : 'budget-row';
     return `<div class="${rowClass}">
-      <input type="text" value="${cat}" onchange="renameCategory('${esc}',this.value)">
+      <input type="text" value="${escapeHtml(cat)}" onchange="renameCategory('${esc}',this.value)">
       <input type="number" step="0.01" value="${amt}" onchange="updateBudgetField('${esc}','amount',parseFloat(this.value))">
       <select onchange="updateBudgetField('${esc}','freq',this.value)">
         <option value="weekly" ${freq==='weekly'?'selected':''}>/ week</option>
@@ -4441,11 +4448,11 @@ function renderSettings() {
     if (group.extraMonthly) totalWk += group.extraMonthly * 12 / 52;
     const ext = extrapolate(totalWk);
     const isOpen = expandedGroups[groupName];
-    const gesc = groupName.replace(/'/g, "\\'");
-    const extraNote = group.extraLabel ? ` <span style="font-size:11px;font-weight:400;color:var(--muted)">(incl. ${group.extraLabel} $${group.extraMonthly}/mo)</span>` : '';
+    const gesc = jsStr(groupName);
+    const extraNote = group.extraLabel ? ` <span style="font-size:11px;font-weight:400;color:var(--muted)">(incl. ${escapeHtml(group.extraLabel)} $${group.extraMonthly}/mo)</span>` : '';
 
     let html = `<div class="budget-group-header" onclick="toggleGroup('${gesc}')">
-      <span style="font-weight:600"><span class="budget-group-toggle ${isOpen?'open':''}">&#9654;</span> ${groupName}${extraNote}</span>
+      <span style="font-weight:600"><span class="budget-group-toggle ${isOpen?'open':''}">&#9654;</span> ${escapeHtml(groupName)}${extraNote}</span>
       <span style="font-weight:600;font-size:12px;color:var(--muted);text-align:right">${children.length} items</span>
       <span>&nbsp;</span>
       <span>&nbsp;</span>
@@ -4543,9 +4550,9 @@ function renderSettings() {
   // Cards
   document.getElementById('cardList').innerHTML = Object.entries(store.cards).map(([card, owner]) => `
     <div class="setting-row">
-      <input value="${card}" style="width:200px" onchange="updateCardMapping('${card}',this.value,'${owner}')">
-      <input value="${owner}" style="width:120px" onchange="store.cards['${card}']=this.value;saveStore(store);">
-      <button class="btn btn-sm btn-danger" onclick="delete store.cards['${card}'];saveStore(store);renderSettings();">×</button>
+      <input value="${escapeHtml(card)}" style="width:200px" onchange="updateCardMapping('${jsStr(card)}',this.value,'${jsStr(owner)}')">
+      <input value="${escapeHtml(owner)}" style="width:120px" onchange="store.cards['${jsStr(card)}']=this.value;saveStore(store);">
+      <button class="btn btn-sm btn-danger" onclick="delete store.cards['${jsStr(card)}'];saveStore(store);renderSettings();">×</button>
     </div>
   `).join('');
 
