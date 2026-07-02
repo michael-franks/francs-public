@@ -47,7 +47,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_) { data = { body: e.data && e.data.text() }; }
-  const title = data.title || 'Budget';
+  const title = data.title || 'Francs';
   const opts = {
     body: data.body || '',
     icon: '/icons/icon-192.png',

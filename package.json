@@ -1,7 +1,7 @@
 {
-  "name": "budget-tool",
+  "name": "francs",
   "version": "1.0.0",
-  "description": "Akahu open-banking server for a simple NZ household budget tool",
+  "description": "Akahu open-banking server for a simple NZ household budget tracker",
   "license": "MIT",
   "main": "server.js",
   "scripts": {

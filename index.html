@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Budget Tool</title>
+<title>Francs</title>
 <!-- PWA: installable full-screen app, icons, theme colour, offline shell -->
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Budget">
+<meta name="apple-mobile-web-app-title" content="Francs">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
@@ -371,7 +371,7 @@ body.modal-open { overflow: hidden; }
 <div class="container">
   <nav>
     <div class="brand">
-      <h1>Budget Tool</h1>
+      <h1>Francs</h1>
       <div class="brandctrls">
         <label class="priv-toggle"><span class="switch"><input type="checkbox" onchange="togglePrivacy(this.checked)"><span class="slider"></span></span> Privacy</label>
         <span id="freshtext"></span>
@@ -5211,7 +5211,7 @@ saveLocalOnly(store);
 
 // Show build version and data status on load
 console.log('[Budget Tracker v2] Periods:', store.periods.length, '| Merchants:', Object.keys(store.merchants).length, '| Balances:', store.balances.length, '| schema:', store.schemaVersion);
-document.title = 'Budget Tool';
+document.title = 'Francs';
 
 showTab('home');
 

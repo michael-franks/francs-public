@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════
-// Budget Tool — Akahu open-banking server
+// Francs — Akahu open-banking server
 // Fetches transactions from Akahu (read-only) and serves them to the budget UI.
 //
 // Paths (override via env):
@@ -471,7 +471,7 @@ if (fs.existsSync(trackerFile)) {
   app.get('/', (req, res) => res.sendFile(trackerFile));
 } else {
   app.get('/', (req, res) => res.send(`
-    <h1>Budget Tool Server</h1>
+    <h1>Francs Server</h1>
     <p>Place index.html in ${__dirname} to serve the budget tracker.</p>
     <p><a href="/api/status">API Status</a></p>
   `));
@@ -522,7 +522,7 @@ app.post('/api/push/unsubscribe', (req, res) => {
 });
 app.post('/api/push/test', async (req, res) => {
   if (!pushConfigured()) return res.status(503).json({ ok: false, error: 'push not configured' });
-  try { const sent = await sendPush({ title: 'Budget Tool', body: 'Test notification — push is working.', url: '/', tag: 'test' }); res.json({ ok: true, sent }); }
+  try { const sent = await sendPush({ title: 'Francs', body: 'Test notification — push is working.', url: '/', tag: 'test' }); res.json({ ok: true, sent }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -709,7 +709,7 @@ app.put('/api/state', (req, res) => {
 // ─── Start server ─────────────────────────────────────────────
 
 app.listen(PORT, HOST, () => {
-  console.log(`[server] Budget Tool Server running at http://${HOST}:${PORT}`);
+  console.log(`[server] Francs Server running at http://${HOST}:${PORT}`);
   console.log(`[server] Data dir: ${DATA_DIR}`);
   console.log(`[server] Endpoints: /api/status, POST /api/fetch, /api/transactions, /api/accounts, /health`);
   // Loud warning if reachable beyond localhost without any auth: the API serves your finances

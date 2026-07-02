@@ -1,6 +1,6 @@
 {
-  "name": "Budget Tool",
-  "short_name": "Budget",
+  "name": "Francs",
+  "short_name": "Francs",
   "description": "Self-hosted NZ household budget tracker",
   "start_url": "/",
   "scope": "/",

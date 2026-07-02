@@ -1,4 +1,4 @@
-# Budget Tool
+# Francs
 
 A self-hosted budgeting web app for a two-person New Zealand household. It pulls
 your transactions and balances from your bank via [Akahu](https://akahu.nz)
